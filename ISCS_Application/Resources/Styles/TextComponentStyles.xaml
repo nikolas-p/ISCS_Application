@@ -1,0 +1,30 @@
+﻿<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <Style TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
+        <Setter Property="FontFamily" Value="{StaticResource BaseFont}" />
+        <Setter Property="FontSize" Value="{StaticResource FontSizeNormal}" />
+        <Setter Property="Foreground" Value="{StaticResource BaseGrayBrush}"/>
+    </Style>
+
+    <!-- Стиль по умолчанию для Control (применяется к Button, TextBox и др.) -->
+    <Style TargetType="Control">
+        <Setter Property="FontFamily" Value="{StaticResource BaseFont}" />
+        <Setter Property="FontSize" Value="{StaticResource FontSizeNormal}" />
+    </Style>
+
+    <Style TargetType="TextBox" >
+        <Setter Property="Background" Value="White"/>
+        <Setter Property="BorderBrush" Value="#FFB0B0B0"/>
+        <Setter Property="BorderThickness" Value="1"/>
+        <Setter Property="Padding" Value="6"/>
+        <Setter Property="FontSize" Value="{DynamicResource FontSizeNormal}"/>
+        <Setter Property="FontFamily" Value="{DynamicResource BaseFont}"/>
+
+    </Style>
+
+    
+
+    
+
+</ResourceDictionary>

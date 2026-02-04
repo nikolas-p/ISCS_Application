@@ -1,0 +1,12 @@
+﻿<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:System="clr-namespace:System;assembly=mscorlib">
+
+    <FontFamily x:Key="BaseFont">Times New Roman</FontFamily>
+    <FontFamily x:Key="BaseFontWithFallback">Times New Roman, Times</FontFamily>
+
+    <System:Double x:Key="FontSizeSmall">16</System:Double>
+    <System:Double x:Key="FontSizeNormal">20</System:Double>
+    <System:Double x:Key="FontSizeLarge">26</System:Double>
+    
+</ResourceDictionary>
