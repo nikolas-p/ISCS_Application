@@ -5,7 +5,7 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:local="clr-namespace:ISCS_Application"
         mc:Ignorable="d"
-        Title="Вход в систему" Height="250" Width="350">
+        Title="Вход в систему" Height="350" Width="350">
     <StackPanel Margin="20">
         <TextBlock Text="Логин"/>
         <TextBox x:Name="LoginBox"/>

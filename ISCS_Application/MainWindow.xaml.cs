@@ -12,26 +12,83 @@ using ISCS_Application.Models;
 using ISCS_Application.ViewModels;
 using ISCS_Application.Enums;
 using System.Diagnostics;
+using Microsoft.Extensions.Logging;
 
 namespace ISCS_Application
 {
     public partial class MainWindow : Window
     {
         private readonly bool _isGuest;
+        private readonly Worker? _currentWorker;
+        private readonly string? _userRole; // "admin", "manager", "user"
         private ObservableCollection<EquipmentListItem> _equipmentItems = new();
+
+        // Получение пользователя и его роли
+        private (Worker? worker, string? role) VerifyUserAndGetRole(string login)
+        {
+            using var db = new OfficeDbContext();
+            var worker = db.Workers
+                .Include(w => w.Position)
+                .FirstOrDefault(w => w.Login == login);
+
+            if (worker == null)
+                return (null, null);
+
+            // Определение роли на основе должности
+            string role;
+            switch (worker.Position.Name.ToLower())
+            {
+                case "администратор бд":
+                    role = "admin";
+                    break;
+                case "заведующий лабораторией":
+                    role = "manager";
+                    break;
+                default:
+                    role = "user";
+                    break;
+            }
+
+            return (worker, role);
+        }
 
         public MainWindow(string? login, bool isGuest)
         {
-           
             InitializeComponent();
             _isGuest = isGuest;
 
-            UserInfoText.Text = isGuest
-                ? "Вы зашли как гость"
-                : $"Вы вошли как: {login}";
+            if (!isGuest && !string.IsNullOrEmpty(login))
+            {
+                var (worker, role) = VerifyUserAndGetRole(login);
+                if (worker != null)
+                {
+                    _currentWorker = worker;
+                    _userRole = role;
 
-            LoadSortOptions();
-            LoadEquipment();
+                    UserInfoText.Text = $"Вы {worker.Position.Name}: {worker.Firstname} {worker.Lastname} {worker.Surname}";
+                    if (role == "manager")
+                    {
+                        UserInfoText.Text += $" (Отдел: {worker.OfficeId})";
+                    }
+                }
+                else
+                {
+                    // Если пользователь не найден, открываем как гость
+                    UserInfoText.Text = "Вы зашли как гость";
+                    _isGuest = true;
+                    _userRole = null;
+                    LoadGuestEquipment();
+                    return;
+                }
+
+                LoadSortOptions();
+                LoadEquipmentByRole();
+            }
+            else
+            {
+                UserInfoText.Text = "Вы зашли как гость";
+                LoadGuestEquipment();
+            }
         }
 
         private void LoadSortOptions()
@@ -50,6 +107,7 @@ namespace ISCS_Application
             SortComboBox.SelectedValuePath = "Value";
             SortComboBox.SelectedIndex = 0;
         }
+
         private static string GetEnumDescription(Enum value)
         {
             var field = value.GetType().GetField(value.ToString());
@@ -58,28 +116,138 @@ namespace ISCS_Application
             return attribute?.Description ?? value.ToString();
         }
 
-
         private void SortComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
             if (SortComboBox.SelectedItem == null)
                 return;
 
             dynamic selected = SortComboBox.SelectedItem;
-
-
+            // Здесь можно добавить логику сортировки
         }
 
-       
-        private void LoadEquipment()
+        // Метод для гостя: оборудование с PlaceID или OfficeID = null, исключая секретные и складские места
+        private List<Equipment> GetGuestEquipment()
         {
             using var db = new OfficeDbContext();
+            return db.Equipment
+                .Include(e => e.Place)
+                    .ThenInclude(p => p.Office)
+                .AsNoTracking()
+                .Where(e =>
+                    // Случай 1: Оборудование без места
+                    e.Place == null ||
 
-            var equipmentList = db.Equipment
+                    // Случай 2: Место есть, но без офиса И название не содержит запрещенных слов
+                    (e.Place != null &&
+                     e.Place.OfficeId == null &&
+                     e.Place.Name != null &&
+                     !e.Place.Name.Contains("засекречено") &&
+                     !e.Place.Name.Contains("склад"))
+                )
+                .ToList();
+        }
+
+        // Метод для заведующего отделом: оборудование его офиса
+        private List<Equipment> GetManagerEquipment(int managerOfficeId)
+        {
+            using var db = new OfficeDbContext();
+            return db.Equipment
+                .Include(e => e.Place)
+                    .ThenInclude(p => p.Office)
+                .AsNoTracking()
+                .Where(e => e.Place != null &&
+                           e.Place.Office != null &&
+                           e.Place.Office.Id == managerOfficeId)
+                .ToList();
+        }
+
+        // Метод для администратора: всё оборудование
+        private List<Equipment> GetAdminEquipment()
+        {
+            using var db = new OfficeDbContext();
+            return db.Equipment
                 .Include(e => e.Place)
                     .ThenInclude(p => p.Office)
                 .AsNoTracking()
                 .ToList();
+        }
 
+        // Метод для обычного пользователя (не гость!)
+        private List<Equipment> GetUserEquipment(int userOfficeId)
+        {
+            using var db = new OfficeDbContext();
+            return db.Equipment
+                .Include(e => e.Place)
+                    .ThenInclude(p => p.Office)
+                .AsNoTracking()
+                .ToList() // Фильтрация в памяти для ToLower()
+                .Where(e =>
+                {
+                    // 1. Оборудование без места
+                    if (e.Place == null)
+                        return true;
+
+                    var placeName = e.Place.Name ?? "";
+                    var lowerPlaceName = placeName.ToLower();
+
+                    // 2. Место без офиса (общедоступное)
+                    if (e.Place.OfficeId == null)
+                    {
+                        // Проверяем, не является ли место секретным/складским
+                        return !lowerPlaceName.Contains("засекречено") &&
+                               !lowerPlaceName.Contains("склад");
+                    }
+
+                    // 3. Место с офисом - проверяем совпадение с офисом пользователя
+                    if (e.Place.OfficeId == userOfficeId)
+                    {
+                        // Пользователь видит ВСЁ оборудование своего офиса
+                        // (включая секретное и складское)
+                        return true;
+                    }
+
+                    return false;
+                })
+                .ToList();
+        }
+
+        private void LoadEquipmentByRole()
+        {
+            List<Equipment> equipmentList;
+
+            switch (_userRole)
+            {
+                case "admin":
+                    equipmentList = GetAdminEquipment();
+                    break;
+                case "manager":
+                    if (_currentWorker != null)
+                        equipmentList = GetManagerEquipment(_currentWorker.OfficeId);
+                    else
+                        equipmentList = new List<Equipment>();
+                    break;
+                case "user":
+                    if (_currentWorker != null)
+                        equipmentList = GetUserEquipment(_currentWorker.OfficeId); // Исправлено!
+                    else
+                        equipmentList = new List<Equipment>();
+                    break;
+                default:
+                    equipmentList = new List<Equipment>();
+                    break;
+            }
+
+            UpdateEquipmentList(equipmentList);
+        }
+
+        private void LoadGuestEquipment()
+        {
+            var equipmentList = GetGuestEquipment();
+            UpdateEquipmentList(equipmentList);
+        }
+
+        private void UpdateEquipmentList(List<Equipment> equipmentList)
+        {
             _equipmentItems.Clear();
 
             foreach (var e in equipmentList)
@@ -89,16 +257,44 @@ namespace ISCS_Application
                     EquipmentName = e.Name,
                     EquipmentDescription = e.Description,
                     EquipmentPlace = $"Место: {e.Place?.Name ?? "—"}",
-                    EquipmentOffice = $"Офис: {e.Place?.Office?.ShortName ?? "—"}",
+                    EquipmentOffice = $"Офис: {e.Place?.Office?.ShortName ?? e.Place?.Office?.FullName ?? "—"}",
                     EquipmentPhotoPath = GetEquipmentImagePath(e.PhotoPath) ?? "/Resources/Images/stub.jpg"
                 };
 
-                var endDate = e.ServiceStart.AddYears(e.ServiceLife);
-                if (endDate < DateOnly.FromDateTime(DateTime.Now))
+                // Проверка срока службы (только для админа и заведующего отделом)
+                bool canSeeStatus = _userRole == "admin" || _userRole == "manager";
+
+                if (canSeeStatus)
                 {
-                    item.StatusTextBlock = "Срок службы истёк";
-                    item.StatusColor = System.Windows.Media.Brushes.IndianRed;
-                    item.StatusVisibility = Visibility.Visible;
+                    var endDate = e.ServiceStart.AddYears(e.ServiceLife);
+                    if (endDate < DateOnly.FromDateTime(DateTime.Now))
+                    {
+                        item.StatusTextBlock = "Срок службы истёк";
+                        item.StatusColor = System.Windows.Media.Brushes.IndianRed;
+                        item.StatusVisibility = Visibility.Visible;
+                    }
+                    else
+                    {
+                        // Рассчитываем оставшийся срок
+                        var remainingYears = e.ServiceLife - (DateTime.Now.Year - e.ServiceStart.Year);
+                        if (remainingYears <= 1)
+                        {
+                            item.StatusTextBlock = $"Заканчивается через {remainingYears} год";
+                            item.StatusColor = System.Windows.Media.Brushes.Orange;
+                            item.StatusVisibility = Visibility.Visible;
+                        }
+                        else
+                        {
+                            item.StatusTextBlock = "Активно";
+                            item.StatusColor = System.Windows.Media.Brushes.LightGreen;
+                            item.StatusVisibility = Visibility.Visible;
+                        }
+                    }
+                }
+                else
+                {
+                    // Для гостей и обычных пользователей скрываем статус
+                    item.StatusVisibility = Visibility.Collapsed;
                 }
 
                 _equipmentItems.Add(item);
@@ -112,10 +308,9 @@ namespace ISCS_Application
             if (string.IsNullOrWhiteSpace(fileName))
                 return null;
 
-            // Отладочный вывод
             Debug.WriteLine($"\nИщем файл: {fileName}");
 
-            // 1. Пробуем как ресурс WPF (самый правильный способ)
+            // 1. Пробуем как ресурс WPF
             string resourcePath = $"/Resources/Images/{fileName}";
             Debug.WriteLine($"Ресурсный путь: {resourcePath}");
 
@@ -135,39 +330,27 @@ namespace ISCS_Application
                 Debug.WriteLine($"Ошибка ресурса: {ex.Message}");
             }
 
-            // 2. Ищем в корне проекта (где .csproj файл)
+            // 2. Ищем в корне проекта
             string projectDirectory = GetProjectRootDirectory();
             Debug.WriteLine($"Директория проекта: {projectDirectory}");
 
             if (!string.IsNullOrEmpty(projectDirectory))
             {
-                // Правильный путь: Проект/Resources/Images/
                 string imagesDirectory = Path.Combine(projectDirectory, "Resources", "Images");
                 Debug.WriteLine($"Директория Images: {imagesDirectory}");
-                Debug.WriteLine($"Существует ли: {Directory.Exists(imagesDirectory)}");
 
                 if (Directory.Exists(imagesDirectory))
                 {
-                    // Показываем все файлы в папке
-                    var files = Directory.GetFiles(imagesDirectory);
-                    Debug.WriteLine($"Файлов в папке: {files.Length}");
-                    foreach (var file in files)
-                    {
-                        Debug.WriteLine($"  - {Path.GetFileName(file)}");
-                    }
-
-                    // Ищем файл
                     string filePath = Path.Combine(imagesDirectory, fileName);
-                    Debug.WriteLine($"Полный путь к файлу: {filePath}");
-                    Debug.WriteLine($"Существует ли файл: {File.Exists(filePath)}");
 
                     if (File.Exists(filePath))
                     {
                         Debug.WriteLine($"✓ Найден в проекте: {filePath}");
-                        return filePath; // Возвращаем полный путь
+                        return filePath;
                     }
 
-                    // Пробуем без учета регистра
+                    // Поиск без учета регистра
+                    var files = Directory.GetFiles(imagesDirectory);
                     var foundFile = files.FirstOrDefault(f =>
                         string.Equals(Path.GetFileName(f), fileName, StringComparison.OrdinalIgnoreCase));
 
@@ -183,42 +366,32 @@ namespace ISCS_Application
             return null;
         }
 
+        // Метод для получения корневой директории проекта
         private string GetProjectRootDirectory()
         {
             try
             {
-                // Текущая директория приложения
-                string currentDir = AppDomain.CurrentDomain.BaseDirectory;
-                Debug.WriteLine($"BaseDirectory: {currentDir}");
+                var basePath = AppDomain.CurrentDomain.BaseDirectory;
+                var projectPath = Path.GetFullPath(Path.Combine(basePath, @"..\..\..\"));
 
-                // Поднимаемся по дереву папок
-                DirectoryInfo? dir = new DirectoryInfo(currentDir);
-
-                // Поднимаемся пока не найдем .csproj файл
-                while (dir != null && !dir.GetFiles("*.csproj").Any())
-                {
-                    dir = dir.Parent;
-                }
-
-                if (dir != null)
-                {
-                    Debug.WriteLine($"Найден проект в: {dir.FullName}");
-                    return dir.FullName;
-                }
-
-                // Альтернативный способ
-                string? projectPath = Directory.GetParent(currentDir)?
-                                             .Parent?.Parent?.FullName;
-
-                Debug.WriteLine($"Альтернативный путь: {projectPath}");
-                return projectPath ?? string.Empty;
+                return Directory.Exists(projectPath) ? projectPath : string.Empty;
             }
-            catch (Exception ex)
+            catch
             {
-                Debug.WriteLine($"Ошибка поиска проекта: {ex.Message}");
                 return string.Empty;
             }
         }
 
+        private void ExitButton_Click(object sender, RoutedEventArgs e)
+        {
+            var login = new LoginWindow();
+            login.Show();
+            Close();
+        }
+
+        private void AddItem_Click(object sender, RoutedEventArgs e)
+        {
+
+        }
     }
 }

@@ -29,7 +29,7 @@
                 <ColumnDefinition Width="3*"/>
                 <ColumnDefinition Width="7*"/>
             </Grid.ColumnDefinitions>
-            <Button Grid.Column="0" x:Name="ExitButton" Style="{DynamicResource AdditionalOrangeButtonFULL}"> ← Выйти из системы</Button>
+            <Button Grid.Column="0" x:Name="ExitButton" Style="{DynamicResource AdditionalOrangeButtonFULL}" Click="ExitButton_Click"> ← Выйти из системы</Button>
             <TextBlock Grid.Column="1" x:Name="UserInfoText" TextWrapping="Wrap" 
             TextAlignment="Right" />
         </Grid>
@@ -86,7 +86,7 @@
         </Grid>
         
         <Grid Grid.Row="2">
-            <Button x:Name="AddItem" Style="{DynamicResource AdditionalOrangeButtonWithRoundTop}" Height="auto" Background="{DynamicResource ActsentGreenBrush}">Добавить</Button>
+            <Button x:Name="AddItem" Style="{DynamicResource AdditionalOrangeButtonWithRoundTop}" Height="auto" Background="{DynamicResource ActsentGreenBrush}" Click="AddItem_Click">Добавить</Button>
         </Grid>
     </Grid>
 
