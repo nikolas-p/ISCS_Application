@@ -9,6 +9,9 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <None Remove="icon.ico" />
+    <None Remove="logo.png" />
+    <None Remove="Resources\Images\logo.png" />
     <None Remove="Resources\Images\stub.jpg" />
   </ItemGroup>
 
@@ -26,6 +29,9 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Resource Include="icon.ico" />
+    <Resource Include="logo.png" />
+    <Resource Include="Resources\Images\logo.png" />
     <Resource Include="Resources\Images\stub.jpg" />
   </ItemGroup>
 

@@ -219,6 +219,7 @@ namespace ISCS_Application
             {
                 case "admin":
                     equipmentList = GetAdminEquipment();
+                    Debug.WriteLine($"Загружено {equipmentList.Count} записей для администратора");
                     break;
                 case "manager":
                     if (_currentWorker != null)
@@ -256,8 +257,8 @@ namespace ISCS_Application
                 {
                     EquipmentName = e.Name,
                     EquipmentDescription = e.Description,
-                    EquipmentPlace = $"Место: {e.Place?.Name ?? "—"}",
-                    EquipmentOffice = $"Офис: {e.Place?.Office?.ShortName ?? e.Place?.Office?.FullName ?? "—"}",
+                    EquipmentPlace = $"Аудитория: {e.Place?.Name ?? "—"}",
+                    EquipmentOffice = $"Подразделение: {e.Place?.Office?.ShortName ?? e.Place?.Office?.FullName ?? "—"}",
                     EquipmentPhotoPath = GetEquipmentImagePath(e.PhotoPath) ?? "/Resources/Images/stub.jpg"
                 };
 
@@ -266,10 +267,15 @@ namespace ISCS_Application
 
                 if (canSeeStatus)
                 {
+                    if (item.EquipmentPlace.ToLower().Contains("склад"))
+                    {
+                        item.StatusVisibility = Visibility.Collapsed;
+                        continue;
+                    }
                     var endDate = e.ServiceStart.AddYears(e.ServiceLife);
                     if (endDate < DateOnly.FromDateTime(DateTime.Now))
                     {
-                        item.StatusTextBlock = "Срок службы истёк";
+                        item.StatusTextBlock = "На списание";
                         item.StatusColor = System.Windows.Media.Brushes.IndianRed;
                         item.StatusVisibility = Visibility.Visible;
                     }
@@ -279,14 +285,14 @@ namespace ISCS_Application
                         var remainingYears = e.ServiceLife - (DateTime.Now.Year - e.ServiceStart.Year);
                         if (remainingYears <= 1)
                         {
-                            item.StatusTextBlock = $"Заканчивается через {remainingYears} год";
+                            item.StatusTextBlock = $"Истекает в этом году";
                             item.StatusColor = System.Windows.Media.Brushes.Orange;
                             item.StatusVisibility = Visibility.Visible;
                         }
                         else
                         {
-                            item.StatusTextBlock = "Активно";
-                            item.StatusColor = System.Windows.Media.Brushes.LightGreen;
+                            item.StatusTextBlock = "Срок службы до " + (e.ServiceStart.Year+e.ServiceLife).ToString();
+                            item.StatusColor = System.Windows.Media.Brushes.Transparent;
                             item.StatusVisibility = Visibility.Visible;
                         }
                     }
