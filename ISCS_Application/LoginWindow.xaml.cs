@@ -1,17 +1,7 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-using System.Windows;
+﻿using System.Windows;
 using System.Windows.Controls;
-using System.Windows.Data;
-using System.Windows.Documents;
-using System.Windows.Input;
-using System.Windows.Media;
-using System.Windows.Media.Imaging;
-using System.Windows.Shapes;
 using ISCS_Application.Models;
+using Microsoft.EntityFrameworkCore;
 
 namespace ISCS_Application
 {
@@ -39,20 +29,34 @@ namespace ISCS_Application
                 return;
             }
 
-            OpenMainWindow(user.Login, false);
+            OpenMainWindow(user.Login);
 
         }
 
         private void Guest_Click(object sender, RoutedEventArgs e)
         {
-            OpenMainWindow("Гость", true);
+            OpenMainWindow(null);
         }
 
-        private void OpenMainWindow(string? login, bool isGuest)
+        private void OpenMainWindow(string? login)
         {
-            var main = new MainWindow(login, isGuest);
+            var worker = VerifyUser(login);
+            var main = new MainWindow(worker);
             main.Show();
             Close();
+        }
+        // Получение пользователя и его роли
+        private Worker? VerifyUser(string login)
+        {
+            using var db = new OfficeDbContext();
+            var worker = db.Workers
+                .Include(w => w.Position)
+                .FirstOrDefault(w => w.Login == login);
+
+            if (worker == null)
+                return null;
+
+            return worker;
         }
     }
 }

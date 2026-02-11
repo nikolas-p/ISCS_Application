@@ -1,94 +1,42 @@
-﻿using System;
+﻿using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Windows;
 using System.Windows.Controls;
-using System.Windows.Media.Imaging;
-using System.Collections.ObjectModel;
-using Microsoft.EntityFrameworkCore;
+using ISCS_Application.Enums;
 using ISCS_Application.Models;
 using ISCS_Application.ViewModels;
-using ISCS_Application.Enums;
-using System.Diagnostics;
-using Microsoft.Extensions.Logging;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.IdentityModel.Tokens;
 
 namespace ISCS_Application
 {
     public partial class MainWindow : Window
     {
-        private readonly bool _isGuest;
-        private readonly Worker? _currentWorker;
-        private readonly string? _userRole; // "admin", "manager", "user"
+        private Worker? currentWorker;
         private ObservableCollection<EquipmentListItem> _equipmentItems = new();
 
-        // Получение пользователя и его роли
-        private (Worker? worker, string? role) VerifyUserAndGetRole(string login)
-        {
-            using var db = new OfficeDbContext();
-            var worker = db.Workers
-                .Include(w => w.Position)
-                .FirstOrDefault(w => w.Login == login);
-
-            if (worker == null)
-                return (null, null);
-
-            // Определение роли на основе должности
-            string role;
-            switch (worker.Position.Name.ToLower())
-            {
-                case "администратор бд":
-                    role = "admin";
-                    break;
-                case "заведующий лабораторией":
-                    role = "manager";
-                    break;
-                default:
-                    role = "user";
-                    break;
-            }
-
-            return (worker, role);
-        }
-
-        public MainWindow(string? login, bool isGuest)
+        public MainWindow(Worker? worker)
         {
             InitializeComponent();
-            _isGuest = isGuest;
+            currentWorker = worker;
 
-            if (!isGuest && !string.IsNullOrEmpty(login))
+            if (currentWorker != null)
             {
-                var (worker, role) = VerifyUserAndGetRole(login);
-                if (worker != null)
-                {
-                    _currentWorker = worker;
-                    _userRole = role;
-
-                    UserInfoText.Text = $"Вы {worker.Position.Name}: {worker.Firstname} {worker.Lastname} {worker.Surname}";
-                    if (role == "manager")
-                    {
-                        UserInfoText.Text += $" (Отдел: {worker.OfficeId})";
-                    }
-                }
-                else
-                {
-                    // Если пользователь не найден, открываем как гость
-                    UserInfoText.Text = "Вы зашли как гость";
-                    _isGuest = true;
-                    _userRole = null;
-                    LoadGuestEquipment();
-                    return;
-                }
-
-                LoadSortOptions();
+                UserInfoText.Text = $"Вы {worker.Position.Name}: {worker.Firstname} {worker.Lastname} {worker.Surname}";
                 LoadEquipmentByRole();
             }
             else
             {
+                // Если пользователь не найден, открываем как гость
                 UserInfoText.Text = "Вы зашли как гость";
                 LoadGuestEquipment();
+                return;
             }
+            LoadSortOptions();
         }
 
         private void LoadSortOptions()
@@ -213,32 +161,34 @@ namespace ISCS_Application
 
         private void LoadEquipmentByRole()
         {
-            List<Equipment> equipmentList;
+            List<Equipment> equipmentList = new List<Equipment>();
 
-            switch (_userRole)
-            {
-                case "admin":
-                    equipmentList = GetAdminEquipment();
-                    Debug.WriteLine($"Загружено {equipmentList.Count} записей для администратора");
-                    break;
-                case "manager":
-                    if (_currentWorker != null)
-                        equipmentList = GetManagerEquipment(_currentWorker.OfficeId);
-                    else
-                        equipmentList = new List<Equipment>();
-                    break;
-                case "user":
-                    if (_currentWorker != null)
-                        equipmentList = GetUserEquipment(_currentWorker.OfficeId); // Исправлено!
-                    else
-                        equipmentList = new List<Equipment>();
-                    break;
-                default:
-                    equipmentList = new List<Equipment>();
-                    break;
-            }
+            string UserRole = GetUserRoleByAuth();
+            
+            if (UserRole.Contains("администратор")) 
+                equipmentList = GetAdminEquipment();
 
+            if (UserRole.Contains("склад")) 
+                equipmentList = GetStorageEquipment();
+
+            if (UserRole.Contains("заведующий")) 
+                equipmentList = GetManagerEquipment(currentWorker.OfficeId);
+          
             UpdateEquipmentList(equipmentList);
+        }
+
+        private List<Equipment> GetStorageEquipment()
+        {
+            return new List<Equipment>();
+            
+        }
+
+        private string GetUserRoleByAuth()
+        {
+            using var db = new OfficeDbContext();
+            var position = db.Positions.FirstOrDefault(o => o.Id == currentWorker.PositionId);
+
+            return position?.Name.ToLower() ?? "" ;
         }
 
         private void LoadGuestEquipment()
@@ -262,8 +212,8 @@ namespace ISCS_Application
                     EquipmentPhotoPath = GetEquipmentImagePath(e.PhotoPath) ?? "/Resources/Images/stub.jpg"
                 };
 
-                // Проверка срока службы (только для админа и заведующего отделом)
-                bool canSeeStatus = _userRole == "admin" || _userRole == "manager";
+                string userRole = GetUserRoleByAuth();
+                bool canSeeStatus = userRole.Contains("админ") || userRole.Contains("заведующий");
 
                 if (canSeeStatus)
                 {
@@ -272,6 +222,7 @@ namespace ISCS_Application
                         item.StatusVisibility = Visibility.Collapsed;
                         continue;
                     }
+
                     var endDate = e.ServiceStart.AddYears(e.ServiceLife);
                     if (endDate < DateOnly.FromDateTime(DateTime.Now))
                     {
@@ -291,7 +242,7 @@ namespace ISCS_Application
                         }
                         else
                         {
-                            item.StatusTextBlock = "Срок службы до " + (e.ServiceStart.Year+e.ServiceLife).ToString();
+                            item.StatusTextBlock = "Срок службы до " + (e.ServiceStart.Year + e.ServiceLife).ToString();
                             item.StatusColor = System.Windows.Media.Brushes.Transparent;
                             item.StatusVisibility = Visibility.Visible;
                         }
@@ -338,12 +289,10 @@ namespace ISCS_Application
 
             // 2. Ищем в корне проекта
             string projectDirectory = GetProjectRootDirectory();
-            Debug.WriteLine($"Директория проекта: {projectDirectory}");
 
             if (!string.IsNullOrEmpty(projectDirectory))
             {
                 string imagesDirectory = Path.Combine(projectDirectory, "Resources", "Images");
-                Debug.WriteLine($"Директория Images: {imagesDirectory}");
 
                 if (Directory.Exists(imagesDirectory))
                 {
@@ -351,7 +300,6 @@ namespace ISCS_Application
 
                     if (File.Exists(filePath))
                     {
-                        Debug.WriteLine($"✓ Найден в проекте: {filePath}");
                         return filePath;
                     }
 
@@ -362,13 +310,11 @@ namespace ISCS_Application
 
                     if (foundFile != null)
                     {
-                        Debug.WriteLine($"✓ Найден (без учета регистра): {foundFile}");
                         return foundFile;
                     }
                 }
             }
 
-            Debug.WriteLine($"✗ Файл '{fileName}' не найден");
             return null;
         }
 

@@ -28,4 +28,9 @@ public partial class Worker
     public virtual ICollection<Office> Offices { get; set; } = new List<Office>();
 
     public virtual Position Position { get; set; } = null!;
+
+    internal string GetUserRoleByAuth()
+    {
+        throw new NotImplementedException();
+    }
 }
