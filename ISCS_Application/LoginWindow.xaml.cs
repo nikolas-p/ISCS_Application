@@ -2,6 +2,7 @@
 using System.Windows.Controls;
 using ISCS_Application.Models;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.IdentityModel.Tokens;
 
 namespace ISCS_Application
 {
@@ -17,20 +18,25 @@ namespace ISCS_Application
 
         private void Login_Click(object sender, RoutedEventArgs e)
         {
-            using var db = new OfficeDbContext();
+            var login = LoginBox.Text;
+            var password = PasswordBox.Password;
 
-            var user = db.Workers.FirstOrDefault(
-                w => w.Login == LoginBox.Text &&
-                w.Password == PasswordBox.Password);
+            // Проверка на пустые значения
+            if (string.IsNullOrWhiteSpace(login) || string.IsNullOrWhiteSpace(password))
+            {
+                MessageBox.Show("Введите логин и пароль");
+                return;
+            }
 
-            if (user == null)
+            var worker = VerifyUser(login, password);
+
+            if (worker == null)
             {
                 MessageBox.Show("Неверный логин или пароль");
                 return;
             }
 
-            OpenMainWindow(user.Login);
-
+            OpenMainWindow(worker);
         }
 
         private void Guest_Click(object sender, RoutedEventArgs e)
@@ -38,22 +44,27 @@ namespace ISCS_Application
             OpenMainWindow(null);
         }
 
-        private void OpenMainWindow(string? login)
+        private void OpenMainWindow(Worker? worker)
         {
-            var worker = VerifyUser(login);
             var main = new MainWindow(worker);
             main.Show();
             Close();
         }
-        // Получение пользователя и его роли
-        private Worker? VerifyUser(string login)
+
+        // Получение пользователя по логину и паролю
+        private Worker? VerifyUser(string login, string password)
         {
+            // Если гость - возвращаем null
+            if (string.IsNullOrEmpty(login))
+                return null;
+
             using var db = new OfficeDbContext();
             var worker = db.Workers
                 .Include(w => w.Position)
                 .FirstOrDefault(w => w.Login == login);
 
-            if (worker == null)
+            // Проверяем существование пользователя и соответствие пароля
+            if (worker == null || worker.Password != password)
                 return null;
 
             return worker;

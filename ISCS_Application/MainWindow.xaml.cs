@@ -31,10 +31,8 @@ namespace ISCS_Application
             }
             else
             {
-                // Если пользователь не найден, открываем как гость
                 UserInfoText.Text = "Вы зашли как гость";
                 LoadGuestEquipment();
-                return;
             }
             LoadSortOptions();
         }
@@ -113,11 +111,7 @@ namespace ISCS_Application
         private List<Equipment> GetAdminEquipment()
         {
             using var db = new OfficeDbContext();
-            return db.Equipment
-                .Include(e => e.Place)
-                    .ThenInclude(p => p.Office)
-                .AsNoTracking()
-                .ToList();
+            return db.Equipment.AsNoTracking().ToList();
         }
 
         // Метод для обычного пользователя (не гость!)
@@ -185,11 +179,15 @@ namespace ISCS_Application
 
         private string GetUserRoleByAuth()
         {
+            if (currentWorker == null)
+                return "";
+
             using var db = new OfficeDbContext();
             var position = db.Positions.FirstOrDefault(o => o.Id == currentWorker.PositionId);
 
-            return position?.Name.ToLower() ?? "" ;
+            return position?.Name.ToLower() ?? "";
         }
+
 
         private void LoadGuestEquipment()
         {
@@ -201,6 +199,10 @@ namespace ISCS_Application
         {
             _equipmentItems.Clear();
 
+            string userRole = GetUserRoleByAuth();
+            bool canSeeStatus = !string.IsNullOrEmpty(userRole) &&
+                               (userRole.Contains("администратор") || userRole.Contains("заведующий"));
+
             foreach (var e in equipmentList)
             {
                 var item = new EquipmentListItem
@@ -209,21 +211,20 @@ namespace ISCS_Application
                     EquipmentDescription = e.Description,
                     EquipmentPlace = $"Аудитория: {e.Place?.Name ?? "—"}",
                     EquipmentOffice = $"Подразделение: {e.Place?.Office?.ShortName ?? e.Place?.Office?.FullName ?? "—"}",
-                    EquipmentPhotoPath = GetEquipmentImagePath(e.PhotoPath) ?? "/Resources/Images/stub.jpg"
+                    EquipmentPhotoPath = GetEquipmentImagePath(e.PhotoPath) ?? "/Resources/Images/stub.jpg",
+                    StatusVisibility = Visibility.Collapsed // По умолчанию скрыто
                 };
-
-                string userRole = GetUserRoleByAuth();
-                bool canSeeStatus = userRole.Contains("админ") || userRole.Contains("заведующий");
 
                 if (canSeeStatus)
                 {
+                    // Пропускаем оборудование на складе
                     if (item.EquipmentPlace.ToLower().Contains("склад"))
                     {
-                        item.StatusVisibility = Visibility.Collapsed;
                         continue;
                     }
 
                     var endDate = e.ServiceStart.AddYears(e.ServiceLife);
+
                     if (endDate < DateOnly.FromDateTime(DateTime.Now))
                     {
                         item.StatusTextBlock = "На списание";
@@ -247,11 +248,6 @@ namespace ISCS_Application
                             item.StatusVisibility = Visibility.Visible;
                         }
                     }
-                }
-                else
-                {
-                    // Для гостей и обычных пользователей скрываем статус
-                    item.StatusVisibility = Visibility.Collapsed;
                 }
 
                 _equipmentItems.Add(item);
