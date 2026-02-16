@@ -42,31 +42,58 @@
             </Grid.ColumnDefinitions>
 
             <StackPanel Orientation="Vertical" Grid.Column="1">
-                <TextBlock TextWrapping="Wrap" 
-      TextAlignment="Center" >Список инвентаря</TextBlock>
 
-                <ComboBox x:Name="SortComboBox"
-         SelectionChanged="SortComboBox_SelectionChanged"
-         />
-                <TextBox x:Name="Search"></TextBox>
+                <StackPanel Orientation="Vertical"
+                            x:Name="EquipmentActionPanel">
+                    
+                    <TextBlock TextWrapping="Wrap" 
+                                TextAlignment="Center">Сортировать</TextBlock>
 
-                <ListBox x:Name="EquipmentListBox" Height="600" HorizontalContentAlignment="Center" BorderThickness="0" BorderBrush="Transparent">
+
+                    <ComboBox x:Name="SortComboBox"
+                                SelectionChanged="SortComboBox_SelectionChanged" />
+
+                    <TextBlock TextWrapping="Wrap" 
+                                TextAlignment="Center">Подразделения</TextBlock>
+
+                    <ComboBox x:Name="OfficeComboBox"
+                                SelectionChanged="SortComboBox_SelectionChanged" />
+
+                    <TextBlock TextWrapping="Wrap" 
+                                TextAlignment="Center">Поиск</TextBlock>
+                    
+                    <TextBox x:Name="Search"></TextBox>
+                </StackPanel>
+               
+
+                <ListBox x:Name="EquipmentListBox" 
+                         Height="600" 
+                         HorizontalContentAlignment="Center" 
+                         BorderThickness="0" 
+                         BorderBrush="Transparent" 
+                         SelectionChanged="EquipmentListBox_SelectionChanged"
+                         IsEnabled="True">
+                    
                     <ListBox.ItemTemplate>
                         <DataTemplate>
-                            <Border Width="700"  BorderThickness="1" BorderBrush="{DynamicResource BaseGrayBrush}" Margin="5" Padding="10" >
+                            <Border Width="700"  
+                                    BorderThickness="1" 
+                                    BorderBrush="{DynamicResource BaseGrayBrush}" 
+                                    Margin="5" 
+                                    Padding="10" >
+                                
                                 <Grid Height="auto">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="3*"/>
                                         <ColumnDefinition Width="7*"/>
                                     </Grid.ColumnDefinitions>
 
-                                    <Image 
-       Width="100" Height="100" Grid.Column="0">
-                                        <Image.Source>
-                                            <BitmapImage UriSource="{Binding EquipmentPhotoPath}"
-                    />
-                                        </Image.Source>
-                                    </Image>
+                                    <Image Width="100" 
+                                           Height="100" 
+                                           Grid.Column="0"
+
+                                         Source="{Binding EquipmentPhoto, UpdateSourceTrigger=PropertyChanged}"  />
+                                    
                                     
                                     <StackPanel Grid.Column="1" Orientation="Vertical">
                                         <TextBlock Text="{Binding EquipmentName}"/>

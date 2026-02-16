@@ -2,15 +2,14 @@
 using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
-using System.Linq;
 using System.Reflection;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Media.Imaging;
 using ISCS_Application.Enums;
 using ISCS_Application.Models;
 using ISCS_Application.ViewModels;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.IdentityModel.Tokens;
 
 namespace ISCS_Application
 {
@@ -18,6 +17,7 @@ namespace ISCS_Application
     {
         private Worker? currentWorker;
         private ObservableCollection<EquipmentListItem> _equipmentItems = new();
+        private DetailWindow _currentDetailWindow;
 
         public MainWindow(Worker? worker)
         {
@@ -34,7 +34,28 @@ namespace ISCS_Application
                 UserInfoText.Text = "Вы зашли как гость";
                 LoadGuestEquipment();
             }
+            LoadActionPanel();
             LoadSortOptions();
+        }
+
+        private void LoadActionPanel()
+        {
+            var panel = (StackPanel)FindName("EquipmentActionPanel");
+            if (panel == null) return;
+
+            if (currentWorker == null)
+            {
+                EquipmentActionPanel.Visibility = Visibility.Collapsed;
+                return;
+            }
+
+            bool isAdminOrEnjeener =
+                currentWorker.Position.Name.ToLower().Contains("админ") ||
+                currentWorker.Position.Name.ToLower().Contains("инженер");
+
+            EquipmentActionPanel.Visibility = isAdminOrEnjeener
+                ? Visibility.Visible
+                : Visibility.Collapsed;
         }
 
         private void LoadSortOptions()
@@ -158,23 +179,23 @@ namespace ISCS_Application
             List<Equipment> equipmentList = new List<Equipment>();
 
             string UserRole = GetUserRoleByAuth();
-            
-            if (UserRole.Contains("администратор")) 
+
+            if (UserRole.Contains("администратор"))
                 equipmentList = GetAdminEquipment();
 
-            if (UserRole.Contains("склад")) 
+            if (UserRole.Contains("склад"))
                 equipmentList = GetStorageEquipment();
 
-            if (UserRole.Contains("заведующий")) 
+            if (UserRole.Contains("заведующий"))
                 equipmentList = GetManagerEquipment(currentWorker.OfficeId);
-          
+
             UpdateEquipmentList(equipmentList);
         }
 
         private List<Equipment> GetStorageEquipment()
         {
             return new List<Equipment>();
-            
+
         }
 
         private string GetUserRoleByAuth()
@@ -188,16 +209,28 @@ namespace ISCS_Application
             return position?.Name.ToLower() ?? "";
         }
 
-
         private void LoadGuestEquipment()
         {
             var equipmentList = GetGuestEquipment();
             UpdateEquipmentList(equipmentList);
         }
 
+        // Публичный метод для обновления списка оборудования
+        public void UpdateEquipmentList()
+        {
+            if (currentWorker != null)
+            {
+                LoadEquipmentByRole();
+            }
+            else
+            {
+                LoadGuestEquipment();
+            }
+        }
+
         private void UpdateEquipmentList(List<Equipment> equipmentList)
         {
-            _equipmentItems.Clear();
+            var newCollection = new ObservableCollection<EquipmentListItem>();
 
             string userRole = GetUserRoleByAuth();
             bool canSeeStatus = !string.IsNullOrEmpty(userRole) &&
@@ -207,112 +240,108 @@ namespace ISCS_Application
             {
                 var item = new EquipmentListItem
                 {
+                    EquipmentId = e.Id,
                     EquipmentName = e.Name,
                     EquipmentDescription = e.Description,
                     EquipmentPlace = $"Аудитория: {e.Place?.Name ?? "—"}",
                     EquipmentOffice = $"Подразделение: {e.Place?.Office?.ShortName ?? e.Place?.Office?.FullName ?? "—"}",
-                    EquipmentPhotoPath = GetEquipmentImagePath(e.PhotoPath) ?? "/Resources/Images/stub.jpg",
-                    StatusVisibility = Visibility.Collapsed // По умолчанию скрыто
+                    EquipmentPhoto = LoadImageSafe(e.PhotoPath),
+                    StatusVisibility = Visibility.Collapsed
                 };
 
-                if (canSeeStatus)
-                {
-                    // Пропускаем оборудование на складе
-                    if (item.EquipmentPlace.ToLower().Contains("склад"))
-                    {
-                        continue;
-                    }
-
-                    var endDate = e.ServiceStart.AddYears(e.ServiceLife);
-
-                    if (endDate < DateOnly.FromDateTime(DateTime.Now))
-                    {
-                        item.StatusTextBlock = "На списание";
-                        item.StatusColor = System.Windows.Media.Brushes.IndianRed;
-                        item.StatusVisibility = Visibility.Visible;
-                    }
-                    else
-                    {
-                        // Рассчитываем оставшийся срок
-                        var remainingYears = e.ServiceLife - (DateTime.Now.Year - e.ServiceStart.Year);
-                        if (remainingYears <= 1)
-                        {
-                            item.StatusTextBlock = $"Истекает в этом году";
-                            item.StatusColor = System.Windows.Media.Brushes.Orange;
-                            item.StatusVisibility = Visibility.Visible;
-                        }
-                        else
-                        {
-                            item.StatusTextBlock = "Срок службы до " + (e.ServiceStart.Year + e.ServiceLife).ToString();
-                            item.StatusColor = System.Windows.Media.Brushes.Transparent;
-                            item.StatusVisibility = Visibility.Visible;
-                        }
-                    }
-                }
-
-                _equipmentItems.Add(item);
+                newCollection.Add(item);
             }
 
-            EquipmentListBox.ItemsSource = _equipmentItems;
+            // Очищаем и обновляем коллекцию
+            Application.Current.Dispatcher.Invoke(() =>
+            {
+                _equipmentItems.Clear();
+                foreach (var item in newCollection)
+                {
+                    _equipmentItems.Add(item);
+                }
+
+                EquipmentListBox.ItemsSource = null;
+                EquipmentListBox.ItemsSource = _equipmentItems;
+                EquipmentListBox.Items.Refresh(); // Принудительное обновление
+            });
         }
 
-        private string? GetEquipmentImagePath(string? fileName)
+        private string GetImagesDirectory()
         {
-            if (string.IsNullOrWhiteSpace(fileName))
-                return null;
+            var basePath = AppDomain.CurrentDomain.BaseDirectory;
+            Debug.WriteLine($"BaseDirectory: {basePath}");
 
-            Debug.WriteLine($"\nИщем файл: {fileName}");
+            // выход из bin/Debug/netX
+            var projectPath = Path.GetFullPath(Path.Combine(basePath, @"..\..\.."));
+            Debug.WriteLine($"ProjectPath: {projectPath}");
 
-            // 1. Пробуем как ресурс WPF
-            string resourcePath = $"/Resources/Images/{fileName}";
-            Debug.WriteLine($"Ресурсный путь: {resourcePath}");
+            var imagesPath = Path.Combine(projectPath, "Resources", "Images");
+            Debug.WriteLine($"ImagesPath: {imagesPath}");
 
+            return imagesPath;
+        }
+
+        private BitmapImage LoadImageSafe(string? path)
+        {
             try
             {
-                var uri = new Uri(resourcePath, UriKind.Relative);
-                var streamInfo = Application.GetResourceStream(uri);
-
-                if (streamInfo != null)
+                if (string.IsNullOrWhiteSpace(path))
                 {
-                    Debug.WriteLine($"✓ Найден как ресурс: {resourcePath}");
-                    return resourcePath;
+                    System.Diagnostics.Debug.WriteLine($"LoadImageSafe: path is null");
+                    return LoadStub();
                 }
+
+                string fullPath = Path.Combine(GetImagesDirectory(), path);
+                System.Diagnostics.Debug.WriteLine($"LoadImageSafe: trying to load {fullPath}");
+
+                if (!File.Exists(fullPath))
+                {
+                    System.Diagnostics.Debug.WriteLine($"LoadImageSafe: file not exist {fullPath}");
+                    return LoadStub();
+                }
+
+                var bitmap = new BitmapImage();
+                bitmap.BeginInit();
+                bitmap.UriSource = new Uri(fullPath, UriKind.Absolute);
+                bitmap.CacheOption = BitmapCacheOption.OnLoad;
+                bitmap.CreateOptions = BitmapCreateOptions.IgnoreImageCache;
+                bitmap.EndInit();
+                bitmap.Freeze();
+
+                System.Diagnostics.Debug.WriteLine($"LoadImageSafe: success");
+                return bitmap;
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"Ошибка ресурса: {ex.Message}");
+                System.Diagnostics.Debug.WriteLine($"LoadImageSafe error: {ex.Message}");
+                return LoadStub();
             }
-
-            // 2. Ищем в корне проекта
-            string projectDirectory = GetProjectRootDirectory();
-
-            if (!string.IsNullOrEmpty(projectDirectory))
-            {
-                string imagesDirectory = Path.Combine(projectDirectory, "Resources", "Images");
-
-                if (Directory.Exists(imagesDirectory))
-                {
-                    string filePath = Path.Combine(imagesDirectory, fileName);
-
-                    if (File.Exists(filePath))
-                    {
-                        return filePath;
-                    }
-
-                    // Поиск без учета регистра
-                    var files = Directory.GetFiles(imagesDirectory);
-                    var foundFile = files.FirstOrDefault(f =>
-                        string.Equals(Path.GetFileName(f), fileName, StringComparison.OrdinalIgnoreCase));
-
-                    if (foundFile != null)
-                    {
-                        return foundFile;
-                    }
-                }
-            }
-
-            return null;
         }
+        private BitmapImage LoadStub()
+        {
+            try
+            {
+                string fullPath = Path.Combine(GetImagesDirectory(), "stub.jpg");
+
+                if (!File.Exists(fullPath))
+                    return new BitmapImage();
+
+                var bitmap = new BitmapImage();
+                bitmap.BeginInit();
+                bitmap.UriSource = new Uri(fullPath, UriKind.Absolute);
+                bitmap.CacheOption = BitmapCacheOption.OnLoad;
+                bitmap.EndInit();
+                bitmap.Freeze();
+
+                return bitmap;
+            }
+            catch
+            {
+                return new BitmapImage();
+            }
+        }
+
 
         // Метод для получения корневой директории проекта
         private string GetProjectRootDirectory()
@@ -341,5 +370,52 @@ namespace ISCS_Application
         {
 
         }
+
+        private void EquipmentListBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (EquipmentListBox.SelectedItem is EquipmentListItem selectedItem)
+            {
+                EquipmentListBox.IsEnabled = false;
+                _currentDetailWindow = new DetailWindow(selectedItem.EquipmentId, this);
+                _currentDetailWindow.Closed += DetailWindow_Closed;
+                _currentDetailWindow.ShowDialog();
+            }
+        }
+
+       
+        private void DetailWindow_Closed(object? sender, EventArgs e)
+        {
+            EquipmentListBox.IsEnabled = true;
+            EquipmentListBox.SelectedItem = null;
+
+            if (_currentDetailWindow != null)
+            {
+                _currentDetailWindow.Closed -= DetailWindow_Closed;
+                _currentDetailWindow = null;
+            }
+        }
+        public void RefreshEquipmentPhoto(int equipmentId)
+        {
+            var item = _equipmentItems.FirstOrDefault(x => x.EquipmentId == equipmentId);
+            if (item == null)
+                return;
+
+            using var db = new OfficeDbContext();
+            var equipment = db.Equipment
+                .AsNoTracking()
+                .FirstOrDefault(e => e.Id == equipmentId);
+
+            if (equipment == null)
+                return;
+
+            // Загружаем новое фото
+            item.EquipmentPhoto = LoadImageSafe(equipment.PhotoPath);
+
+            // Принудительно обновляем отображение
+            EquipmentListBox.Items.Refresh();
+        }
+
+
+
     }
 }
