@@ -7,6 +7,8 @@ using System.Text;
 using System.Threading.Tasks;
 using Microsoft.Win32;
 using System.Windows;
+using System.Drawing;
+using System.Drawing.Imaging;
 
 namespace ISCS_Application.ViewModels
 {
@@ -31,119 +33,71 @@ namespace ISCS_Application.ViewModels
         }
 
         /// <summary>
-        /// Загружает новое изображение с сохранением оригинального имени
+        /// Изменяет размер изображения и сохраняет во временный файл
         /// </summary>
-        /// <returns>Имя сохраненного файла или null, если загрузка отменена</returns>
-        public async Task<string?> UploadNewImage()
+       
+
+        private Rectangle CalculateDestRect(int srcWidth, int srcHeight, int destWidth, int destHeight)
         {
-            var openFileDialog = new OpenFileDialog
-            {
-                Filter = "Image Files|*.jpg;*.jpeg;*.png;*.gif;*.bmp|All Files|*.*",
-                Title = "Выберите изображение"
-            };
+            float ratio = Math.Min((float)destWidth / srcWidth, (float)destHeight / srcHeight);
+            int newWidth = (int)(srcWidth * ratio);
+            int newHeight = (int)(srcHeight * ratio);
 
-            if (openFileDialog.ShowDialog() == true)
-            {
-                try
-                {
-                    // Получаем оригинальное имя файла
-                    string fileName = Path.GetFileName(openFileDialog.FileName);
-                    string destinationPath = Path.Combine(_imagesDirectory, fileName);
+            int x = (destWidth - newWidth) / 2;
+            int y = (destHeight - newHeight) / 2;
 
-                    // Проверяем, существует ли уже файл с таким именем
-                    if (File.Exists(destinationPath))
-                    {
-                        // Спрашиваем, хочет ли пользователь перезаписать файл
-                        var result = MessageBox.Show(
-                            $"Файл {fileName} уже существует. Перезаписать?",
-                            "Подтверждение",
-                            MessageBoxButton.YesNo,
-                            MessageBoxImage.Question);
-
-                        if (result == MessageBoxResult.No)
-                        {
-                            return null;
-                        }
-
-                        // Удаляем существующий файл
-                        File.Delete(destinationPath);
-                    }
-
-                    // Копируем файл с оригинальным именем
-                    File.Copy(openFileDialog.FileName, destinationPath);
-
-                    return fileName;
-                }
-                catch (Exception ex)
-                {
-                    MessageBox.Show($"Ошибка при загрузке изображения: {ex.Message}",
-                        "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
-                    return null;
-                }
-            }
-
-            return null;
+            return new Rectangle(x, y, newWidth, newHeight);
         }
 
         /// <summary>
-        /// Загружает изображение с указанным именем (для перезаписи существующего)
+        /// Сохраняет изображение из временного файла в постоянное место
         /// </summary>
-        public async Task<string?> UploadImageWithName(string? oldFileName)
+        public string SaveImageToPermanent(string tempImagePath, string fileName)
         {
-            var openFileDialog = new OpenFileDialog
+            try
             {
-                Filter = "Image Files|*.jpg;*.jpeg;*.png;*.gif;*.bmp|All Files|*.*",
-                Title = "Выберите изображение"
-            };
+                string destPath = Path.Combine(_imagesDirectory, fileName);
 
-            if (openFileDialog.ShowDialog() == true)
+                // Копируем файл
+                File.Copy(tempImagePath, destPath, true);
+
+                return destPath;
+            }
+            catch (Exception ex)
             {
-                try
+                Debug.WriteLine($"Ошибка при сохранении изображения: {ex.Message}");
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// Удаляет изображение по имени файла
+        /// </summary>
+        public void DeleteImage(string fileName)
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(fileName))
+                    return;
+
+                string fullPath = Path.Combine(_imagesDirectory, fileName);
+
+                if (File.Exists(fullPath))
                 {
-                    string fileName;
-
-                    // Если есть старое имя файла, используем его
-                    if (!string.IsNullOrEmpty(oldFileName) && oldFileName != DEFAULT_IMAGE)
-                    {
-                        fileName = oldFileName;
-                    }
-                    else
-                    {
-                        // Иначе используем оригинальное имя нового файла
-                        fileName = Path.GetFileName(openFileDialog.FileName);
-                    }
-
-                    string destinationPath = Path.Combine(_imagesDirectory, fileName);
-
-                    // Удаляем старый файл, если он существует
-                    if (File.Exists(destinationPath))
-                    {
-                        File.Delete(destinationPath);
-                    }
-
-                    // Копируем новый файл
-                    File.Copy(openFileDialog.FileName, destinationPath);
-
-                    return fileName;
-                }
-                catch (Exception ex)
-                {
-                    MessageBox.Show($"Ошибка при загрузке изображения: {ex.Message}",
-                        "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
-                    return null;
+                    File.SetAttributes(fullPath, FileAttributes.Normal);
+                    File.Delete(fullPath);
+                    Debug.WriteLine($"Удалено изображение: {fullPath}");
                 }
             }
-
-            return null;
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"Ошибка при удалении изображения: {ex.Message}");
+            }
         }
 
         /// <summary>
         /// Обновляет изображение (удаляет старое, загружает новое с тем же именем)
         /// </summary>
-        public async Task<string?> UpdateImage(string? oldFileName)
-        {
-            return await UploadImageWithName(oldFileName);
-        }
         public void DeleteAllImagesByEquipmentId(int equipmentId)
         {
             if (!Directory.Exists(_imagesDirectory))
@@ -161,77 +115,13 @@ namespace ISCS_Application.ViewModels
                     {
                         File.SetAttributes(file, FileAttributes.Normal);
                         File.Delete(file);
+                        Debug.WriteLine($"Удалено изображение для оборудования {equipmentId}: {file}");
                     }
-                    catch { }
-                }
-            }
-        }
-
-        /// <summary>
-        /// Удаляет изображение из папки
-        /// </summary>
-        /// <summary>
-        /// Удаляет изображение из папки
-        /// </summary>
-        /// <summary>
-        /// Удаляет изображение из папки
-        /// </summary>
-        public void DeleteImage(string? fileName)
-        {
-            if (string.IsNullOrEmpty(fileName) ||
-                fileName == DEFAULT_IMAGE ||
-                fileName == "stub.jpg" ||
-                fileName == "sub.jpg")
-                return;
-
-            string filePath = Path.Combine(_imagesDirectory, fileName);
-
-            try
-            {
-                if (File.Exists(filePath))
-                {
-                    // Пробуем снять атрибут "Только для чтения", если он есть
-                    File.SetAttributes(filePath, FileAttributes.Normal);
-
-                    File.Delete(filePath);
-                    Debug.WriteLine($"Файл {fileName} удален");
-                }
-                else
-                {
-                    // Пробуем найти файл без учета регистра
-                    var files = Directory.GetFiles(_imagesDirectory);
-                    var foundFile = files.FirstOrDefault(f =>
-                        string.Equals(Path.GetFileName(f), fileName, StringComparison.OrdinalIgnoreCase));
-
-                    if (foundFile != null)
+                    catch (Exception ex)
                     {
-                        File.SetAttributes(foundFile, FileAttributes.Normal);
-                        File.Delete(foundFile);
-                        Debug.WriteLine($"Файл {fileName} удален (найден по неточному совпадению)");
+                        Debug.WriteLine($"Ошибка при удалении: {ex.Message}");
                     }
                 }
-            }
-            catch (IOException ex)
-            {
-                Debug.WriteLine($"Ошибка при удалении файла {fileName}: {ex.Message}");
-                // Пробуем еще раз через небольшую задержку
-                try
-                {
-                    Task.Delay(500).Wait();
-                    if (File.Exists(filePath))
-                    {
-                        File.SetAttributes(filePath, FileAttributes.Normal);
-                        File.Delete(filePath);
-                    }
-                }
-                catch (Exception innerEx)
-                {
-                    Debug.WriteLine($"Повторная попытка удаления не удалась: {innerEx.Message}");
-                }
-            }
-            catch (Exception ex)
-            {
-                Debug.WriteLine($"Ошибка при удалении файла {fileName}: {ex.Message}");
             }
         }
 
@@ -321,7 +211,6 @@ namespace ISCS_Application.ViewModels
             return $"/Resources/Images/{DEFAULT_IMAGE}";
         }
 
-        
         public string GetProjectRootDirectory()
         {
             try

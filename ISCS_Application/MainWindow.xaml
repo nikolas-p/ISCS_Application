@@ -56,13 +56,14 @@
                     <TextBlock TextWrapping="Wrap" 
                                 TextAlignment="Center">Подразделения</TextBlock>
 
-                    <ComboBox x:Name="OfficeComboBox"
-                                SelectionChanged="SortComboBox_SelectionChanged" />
+                    <ComboBox x:Name="DepartmentFilterComboBox"
+                                SelectionChanged="DepartmentFilterComboBox_SelectionChanged" />
 
                     <TextBlock TextWrapping="Wrap" 
                                 TextAlignment="Center">Поиск</TextBlock>
-                    
-                    <TextBox x:Name="Search"></TextBox>
+
+                    <TextBox x:Name="SearchTextBox" 
+                             TextChanged="SearchTextBox_TextChanged"></TextBox>
                 </StackPanel>
                
 
@@ -113,7 +114,9 @@
         </Grid>
         
         <Grid Grid.Row="2">
-            <Button x:Name="AddItem" Style="{DynamicResource AdditionalOrangeButtonWithRoundTop}" Height="auto" Background="{DynamicResource ActsentGreenBrush}" Click="AddItem_Click">Добавить</Button>
+          
+            <!-- По умолчанию скрыта -->
+            <Button x:Name="AddItemButton" Visibility="Collapsed" Style="{DynamicResource AdditionalOrangeButtonWithRoundTop}" Height="auto" Background="{DynamicResource ActsentGreenBrush}" Click="AddItem_Click">Добавить</Button>
         </Grid>
     </Grid>
 

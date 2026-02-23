@@ -43,5 +43,6 @@ namespace ISCS_Application.ViewModels
         {
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
         }
+        public double Weight { get; set; }
     }
 }

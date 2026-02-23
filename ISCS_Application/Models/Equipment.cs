@@ -1,10 +1,12 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.ComponentModel.DataAnnotations;
 
 namespace ISCS_Application.Models;
 
 public partial class Equipment
 {
+    [Key] // Primary Key
     public int Id { get; set; }
 
     public string InventarNumber { get; set; } = null!;

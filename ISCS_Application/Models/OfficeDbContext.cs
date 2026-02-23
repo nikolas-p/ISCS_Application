@@ -26,15 +26,25 @@ public partial class OfficeDbContext : DbContext
     public virtual DbSet<Worker> Workers { get; set; }
 
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
-#warning To protect potentially sensitive information in your connection string, you should move it out of source code. You can avoid scaffolding the connection string by using the Name= syntax to read it from configuration - see https://go.microsoft.com/fwlink/?linkid=2131148. For more guidance on storing connection strings, see https://go.microsoft.com/fwlink/?LinkId=723263.
-        => optionsBuilder.UseSqlServer("Data Source=DESKTOP-N\\SQLEXPRESS;Initial Catalog=OfficeDB;Integrated Security=True;Encrypt=False;Trust Server Certificate=True");
+    {
+        if (!optionsBuilder.IsConfigured)
+        {
+            // LocalDB создается автоматически
+            optionsBuilder.UseSqlServer(
+                @"Server=(localdb)\mssqllocaldb;Database=OfficeDB;Trusted_Connection=True;TrustServerCertificate=True");
+
+            //Автоматическое создание БД + миграции
+            optionsBuilder.EnableSensitiveDataLogging(false)
+                         .EnableServiceProviderCaching();
+        }
+    }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<Equipment>(entity =>
         {
             entity.Property(e => e.Id)
-                .ValueGeneratedNever()
+                .ValueGeneratedOnAdd()
                 .HasColumnName("id");
             entity.Property(e => e.Description).HasColumnName("description");
             entity.Property(e => e.InventarNumber)
@@ -62,7 +72,7 @@ public partial class OfficeDbContext : DbContext
             entity.ToTable("Office");
 
             entity.Property(e => e.Id)
-                .ValueGeneratedNever()
+                .ValueGeneratedOnAdd()
                 .HasColumnName("id");
             entity.Property(e => e.Floor).HasColumnName("floor");
             entity.Property(e => e.FullName)
@@ -75,6 +85,7 @@ public partial class OfficeDbContext : DbContext
 
             entity.HasOne(d => d.GeneralWorker).WithMany(p => p.Offices)
                 .HasForeignKey(d => d.GeneralWorkerId)
+                .IsRequired(false)
                 .HasConstraintName("FK_Office_Worker");
         });
 
@@ -83,7 +94,7 @@ public partial class OfficeDbContext : DbContext
             entity.ToTable("Place");
 
             entity.Property(e => e.Id)
-                .ValueGeneratedNever()
+                .ValueGeneratedOnAdd()
                 .HasColumnName("id");
             entity.Property(e => e.Name)
                 .HasMaxLength(256)
@@ -100,7 +111,7 @@ public partial class OfficeDbContext : DbContext
             entity.ToTable("Position");
 
             entity.Property(e => e.Id)
-                .ValueGeneratedNever()
+                .ValueGeneratedOnAdd()
                 .HasColumnName("id");
             entity.Property(e => e.Name)
                 .HasMaxLength(255)
@@ -115,7 +126,7 @@ public partial class OfficeDbContext : DbContext
             entity.ToTable("Worker");
 
             entity.Property(e => e.Id)
-                .ValueGeneratedNever()
+                .ValueGeneratedOnAdd()
                 .HasColumnName("id");
             entity.Property(e => e.BdYear).HasColumnName("bd_year");
             entity.Property(e => e.Firstname)
@@ -149,6 +160,7 @@ public partial class OfficeDbContext : DbContext
 
         OnModelCreatingPartial(modelBuilder);
     }
+
 
     partial void OnModelCreatingPartial(ModelBuilder modelBuilder);
 }

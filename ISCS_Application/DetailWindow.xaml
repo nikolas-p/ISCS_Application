@@ -7,58 +7,127 @@
         mc:Ignorable="d"
         ResizeMode="NoResize"
         Topmost="True"
-        Title="Сведения об оборудовании" Height="500" Width="400">
+        Title="{Binding WindowTitle}" 
+        Height="800" Width="500"
+        WindowStartupLocation="CenterOwner">
 
-    <StackPanel Orientation="Vertical">
-        <Grid>
+    <Grid Margin="30">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- Заголовок (Grid.Row="0") -->
+        <TextBlock x:Name="TitleTextBlock" 
+                   Grid.Row="0"
+                   FontSize="20" 
+                   FontWeight="Bold" 
+                   HorizontalAlignment="Center"
+                   Margin="0,0,0,20"/>
+
+        <!-- Фото (Grid.Row="1") -->
+        <StackPanel Grid.Row="1" HorizontalAlignment="Center">
+            <Border BorderBrush="Gray" BorderThickness="1" Width="300" Height="200">
+                <Image x:Name="EquipmentImage" Width="300" Height="200" Stretch="UniformToFill"/>
+            </Border>
+            <Button x:Name="ChangePhotoButton" 
+                    Content="Загрузить фото" 
+                    Width="300" Margin="0,10"
+                    Click="ChangePhotoButton_Click"/>
+        </StackPanel>
+
+        <!-- Поля формы (Grid.Row="2") -->
+        <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto" >
+            <StackPanel Margin="0,20">
+                <!-- Наименование -->
+                <TextBlock Text="Наименование" Margin="0,0,0,5"/>
+                <TextBox x:Name="NameTextBox" TextChanged="RequiredField_TextChanged" Margin="0,0,0,10"/>
+
+                <!-- Инвентарный номер -->
+                <TextBlock Text="Инвентарный номер" Margin="0,0,0,5"/>
+                <TextBox x:Name="InventarNumberTextBox" 
+         Margin="0,0,0,10"
+         TextChanged="RequiredField_TextChanged"/>
+
+
+
+                <!-- Описание -->
+                <TextBlock Text="Описание" Margin="0,0,0,5"/>
+                <TextBox x:Name="DescriptionTextBox" TextWrapping="Wrap" AcceptsReturn="True" Margin="0,0,0,10"/>
+
+                <!-- Подразделение -->
+                <TextBlock Text="Подразделение" Margin="0,0,0,5"/>
+                <ComboBox x:Name="DepartmentComboBox" 
+                          DisplayMemberPath="Name"
+                          SelectedValuePath="Id"
+                          SelectionChanged="DepartmentComboBox_SelectionChanged"
+                          Margin="0,0,0,10"/>
+
+                <!-- Кабинет -->
+                <TextBlock Text="Кабинет" Margin="0,0,0,5"/>
+                <ComboBox x:Name="PlaceComboBox" 
+                          DisplayMemberPath="Name"
+                          SelectedValuePath="Id"
+                          Margin="0,0,0,10"/>
+
+                <!-- Вес -->
+                <TextBlock Text="Вес (кг)" Margin="0,0,0,5"/>
+                <TextBox x:Name="WeightTextBox" 
+                         PreviewTextInput="NumberValidationTextBox"
+                         TextChanged="PositiveNumber_TextChanged"
+                         Margin="0,0,0,5"/>
+                <TextBlock x:Name="WeightErrorText" 
+                           Text="Вес не может быть отрицательным"
+                           Foreground="Red" FontSize="11"
+                           Visibility="Collapsed"/>
+
+                <!-- Срок службы -->
+                <TextBlock Text="Нормативный срок службы (лет)" Margin="0,10,0,5"/>
+                <TextBox x:Name="ServiceLifeTextBox" 
+                         PreviewTextInput="NumberValidationTextBox"
+                         TextChanged="PositiveNumber_TextChanged"
+                         Margin="0,0,0,5"/>
+                <TextBlock x:Name="ServiceLifeErrorText" 
+                           Text="Срок службы не может быть отрицательным"
+                           Foreground="Red" FontSize="11"
+                           Visibility="Collapsed"
+                           Margin="0,0,0,10"/>
+
+                <!-- Дата постановки (только чтение) -->
+                <TextBlock Text="Дата постановки на баланс" Margin="0,0,0,5"/>
+                <DatePicker x:Name="RegistrationDatePicker" IsEnabled="False" Margin="0,0,0,10"/>
+            </StackPanel>
+        </ScrollViewer>
+
+        <!-- Сообщение об ошибке (Grid.Row="3") -->
+        <TextBlock x:Name="InfoMessageTextBlock" 
+                   Grid.Row="3"
+                   Foreground="Red"
+                   HorizontalAlignment="Center"
+                   Margin="0,5"
+                   TextWrapping="Wrap"/>
+
+        <!-- Кнопки (Grid.Row="4") -->
+        <Grid Grid.Row="4" Margin="0,10">
             <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
                 <ColumnDefinition Width="*"/>
                 <ColumnDefinition Width="*"/>
             </Grid.ColumnDefinitions>
 
-            <StackPanel Grid.Column="0" VerticalAlignment="Center" HorizontalAlignment="Center">
-                <TextBlock x:Name="IdTextBlock" FontSize="24" FontWeight="Bold" Margin="10"/>
-                <TextBlock x:Name="MessageTextBlock" Text="открылся элемент с id" FontSize="18" Margin="10"/>
+            <Button Grid.Column="0" x:Name="SaveButton" Content="Сохранить" 
+                    Height="35" Margin="5" Background="LightGreen"
+                    Click="SaveButton_Click"/>
 
-                <!-- Дополнительная информация об оборудовании -->
-                <StackPanel Margin="10" Visibility="Collapsed" x:Name="EquipmentInfoPanel">
-                    <TextBlock x:Name="InventarNumberText" FontSize="14" Margin="0,5"/>
-                    <TextBlock x:Name="NameText" FontSize="16" FontWeight="Bold" Margin="0,5"/>
-                    <TextBlock x:Name="DescriptionText" FontSize="12" Margin="0,5" TextWrapping="Wrap"/>
-                    <TextBlock x:Name="WeightText" FontSize="14" Margin="0,5"/>
-                </StackPanel>
-            </StackPanel>
+            <Button Grid.Column="1" x:Name="DeleteButton" Content="Удалить" 
+                    Height="35" Margin="5" Background="LightCoral"
+                    Click="DeleteButton_Click"/>
 
-            <StackPanel Grid.Column="1" Orientation="Vertical" HorizontalAlignment="Center">
-                <Border BorderBrush="Gray" BorderThickness="1" CornerRadius="5" Margin="10">
-                    <Image x:Name="EquipmentImage" 
-                           Width="150" 
-                           Height="150" 
-                           Stretch="UniformToFill"
-                           Source="/Resources/Images/stub.jpg"/>
-                </Border>
-
-                <Button x:Name="ChangePhotoButton" 
-                        Content="Заменить фото" 
-                        Margin="10,5" 
-                        Padding="10,5"
-                        Click="ChangePhotoButton_Click"/>
-            </StackPanel>
+            <Button Grid.Column="2" x:Name="BackButton" Content="Назад" 
+                    Height="35" Margin="5" Click="BackButton_Click"/>
         </Grid>
-
-        <!-- Кнопка "Сохранить изменения" -->
-        <Button x:Name="SaveButton" 
-                Content="Сохранить изменения" 
-                Style="{DynamicResource AdditionalOrangeButtonWithRoundTop}" 
-                Height="30" 
-                Background="{DynamicResource ActsentGreenBrush}"
-                Click="SaveButton_Click"/>
-
-        <!-- Кнопка "Назад" -->
-        <Button x:Name="BackButton" 
-                Content="Назад" 
-                Height="30" 
-                Margin="0,5"
-                Click="BackButton_Click"/>
-    </StackPanel>
+    </Grid>
 </Window>

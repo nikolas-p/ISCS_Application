@@ -5,6 +5,7 @@ using System.IO;
 using System.Reflection;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Data;
 using System.Windows.Media.Imaging;
 using ISCS_Application.Enums;
 using ISCS_Application.Models;
@@ -17,6 +18,7 @@ namespace ISCS_Application
     {
         private Worker? currentWorker;
         private ObservableCollection<EquipmentListItem> _equipmentItems = new();
+        private List<Equipment> _allEquipment = new(); // Храним все загруженное оборудование для фильтрации
         private DetailWindow _currentDetailWindow;
 
         public MainWindow(Worker? worker)
@@ -35,7 +37,35 @@ namespace ISCS_Application
                 LoadGuestEquipment();
             }
             LoadActionPanel();
+            AddItemButtonVisible(); // Устанавливаем видимость кнопки добавления
             LoadSortOptions();
+            LoadDepartmentFilterOptions(); // Загружаем подразделения для фильтра
+        }
+
+        /// <summary>
+        /// Управляет видимостью кнопки добавления оборудования
+        /// Кнопка видна для: администратор, заведующий лабораторией, инженер
+        /// </summary>
+        private void AddItemButtonVisible()
+        {
+            if (AddItemButton == null) return;
+
+            if (currentWorker == null)
+            {
+                AddItemButton.Visibility = Visibility.Collapsed;
+                return;
+            }
+
+            string positionName = currentWorker.Position.Name.ToLower();
+
+            // Проверяем наличие нужных должностей
+            bool canAddEquipment =
+                positionName.Contains("администратор") ||
+                positionName.Contains("заведующий лабораторией") ||
+                positionName.Contains("инженер") ||
+                positionName.Contains("заведующий"); // На случай если просто "заведующий"
+
+            AddItemButton.Visibility = canAddEquipment ? Visibility.Visible : Visibility.Collapsed;
         }
 
         private void LoadActionPanel()
@@ -50,9 +80,10 @@ namespace ISCS_Application
             }
 
             bool isAdminOrEnjeener =
-                currentWorker.Position.Name.ToLower().Contains("админ") ||
+                currentWorker.Position.Name.ToLower().Contains("администратор") ||
                 currentWorker.Position.Name.ToLower().Contains("инженер");
 
+            Debug.WriteLine(currentWorker.Position.Name.ToLower().Contains("администратор"));
             EquipmentActionPanel.Visibility = isAdminOrEnjeener
                 ? Visibility.Visible
                 : Visibility.Collapsed;
@@ -75,6 +106,29 @@ namespace ISCS_Application
             SortComboBox.SelectedIndex = 0;
         }
 
+        // Загрузка списка подразделений для фильтрации
+        private void LoadDepartmentFilterOptions()
+        {
+            using var db = new OfficeDbContext();
+            var departments = db.Offices
+                .AsNoTracking()
+                .OrderBy(o => o.ShortName ?? o.FullName)
+                .Select(o => new DepartmentFilterItem
+                {
+                    Id = o.Id,
+                    Name = o.ShortName ?? o.FullName
+                })
+                .ToList();
+
+            // Добавляем пункт "Все подразделения" первым
+            departments.Insert(0, new DepartmentFilterItem { Id = -1, Name = "Все подразделения" });
+
+            DepartmentFilterComboBox.ItemsSource = departments;
+            DepartmentFilterComboBox.DisplayMemberPath = "Name";
+            DepartmentFilterComboBox.SelectedValuePath = "Id";
+            DepartmentFilterComboBox.SelectedIndex = 0;
+        }
+
         private static string GetEnumDescription(Enum value)
         {
             var field = value.GetType().GetField(value.ToString());
@@ -83,13 +137,74 @@ namespace ISCS_Application
             return attribute?.Description ?? value.ToString();
         }
 
+        // Обработчик изменения сортировки
         private void SortComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
-            if (SortComboBox.SelectedItem == null)
-                return;
+            ApplyFiltersAndSearch();
+        }
 
-            dynamic selected = SortComboBox.SelectedItem;
-            // Здесь можно добавить логику сортировки
+        // Обработчик изменения текста поиска
+        private void SearchTextBox_TextChanged(object sender, TextChangedEventArgs e)
+        {
+            ApplyFiltersAndSearch();
+        }
+
+        // Обработчик изменения фильтра по подразделению
+        private void DepartmentFilterComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            ApplyFiltersAndSearch();
+        }
+
+        // Основной метод применения всех фильтров, поиска и сортировки
+        private void ApplyFiltersAndSearch()
+        {
+            if (_allEquipment.Count == 0) return;
+
+            var filteredEquipment = _allEquipment.AsEnumerable();
+
+            // Применяем фильтр по подразделению
+            if (DepartmentFilterComboBox.SelectedItem is DepartmentFilterItem selectedDepartment &&
+                selectedDepartment.Id != -1) // -1 означает "Все подразделения"
+            {
+                filteredEquipment = filteredEquipment.Where(e =>
+                    e.Place != null &&
+                    e.Place.OfficeId == selectedDepartment.Id);
+            }
+
+            // Применяем поиск по текстовым полям
+            string searchText = SearchTextBox.Text?.ToLower() ?? "";
+            if (!string.IsNullOrWhiteSpace(searchText))
+            {
+                filteredEquipment = filteredEquipment.Where(e =>
+                    // Поиск по всем текстовым атрибутам
+                    (e.Name != null && e.Name.ToLower().Contains(searchText)) ||
+                    (e.Description != null && e.Description.ToLower().Contains(searchText)) ||
+                    (e.Place != null && e.Place.Name != null && e.Place.Name.ToLower().Contains(searchText)) ||
+                    (e.Place != null && e.Place.Office != null &&
+                     (e.Place.Office.ShortName != null && e.Place.Office.ShortName.ToLower().Contains(searchText) ||
+                      e.Place.Office.FullName != null && e.Place.Office.FullName.ToLower().Contains(searchText)))
+                );
+            }
+
+            // Применяем сортировку по весу
+            if (SortComboBox.SelectedItem != null)
+            {
+                dynamic selected = SortComboBox.SelectedItem;
+                EquipmentSortOption sortOption = selected.Value;
+
+                // Сортировка по возрастанию или убыванию
+                if (sortOption == EquipmentSortOption.WeightAscending)
+                {
+                    // Если Weight не nullable, просто используем его напрямую
+                    filteredEquipment = filteredEquipment.OrderBy(e => e.Weight);
+                }
+                else if (sortOption == EquipmentSortOption.WeightDescending)
+                {
+                    filteredEquipment = filteredEquipment.OrderByDescending(e => e.Weight);
+                }
+            }
+
+            UpdateEquipmentList(filteredEquipment.ToList());
         }
 
         // Метод для гостя: оборудование с PlaceID или OfficeID = null, исключая секретные и складские места
@@ -132,10 +247,14 @@ namespace ISCS_Application
         private List<Equipment> GetAdminEquipment()
         {
             using var db = new OfficeDbContext();
-            return db.Equipment.AsNoTracking().ToList();
+            return db.Equipment
+                .Include(e => e.Place)
+                    .ThenInclude(p => p.Office)
+                .AsNoTracking()
+                .ToList();
         }
 
-        // Метод для обычного пользователя (не гость!)
+        // Метод для обычного пользователя (не гость!) - зависит от подразделения сотрудника
         private List<Equipment> GetUserEquipment(int userOfficeId)
         {
             using var db = new OfficeDbContext();
@@ -182,20 +301,22 @@ namespace ISCS_Application
 
             if (UserRole.Contains("администратор"))
                 equipmentList = GetAdminEquipment();
-
-            if (UserRole.Contains("склад"))
+            else if (UserRole.Contains("склад"))
                 equipmentList = GetStorageEquipment();
-
-            if (UserRole.Contains("заведующий"))
+            else if (UserRole.Contains("заведующий"))
                 equipmentList = GetManagerEquipment(currentWorker.OfficeId);
+            else
+                // Для остальных сотрудников - оборудование их подразделения
+                equipmentList = GetUserEquipment(currentWorker.OfficeId);
 
-            UpdateEquipmentList(equipmentList);
+            _allEquipment = equipmentList;
+            UpdateEquipmentList(_allEquipment);
         }
 
         private List<Equipment> GetStorageEquipment()
         {
+            // TODO: Реализовать логику для складских работников
             return new List<Equipment>();
-
         }
 
         private string GetUserRoleByAuth()
@@ -211,8 +332,8 @@ namespace ISCS_Application
 
         private void LoadGuestEquipment()
         {
-            var equipmentList = GetGuestEquipment();
-            UpdateEquipmentList(equipmentList);
+            _allEquipment = GetGuestEquipment();
+            UpdateEquipmentList(_allEquipment);
         }
 
         // Публичный метод для обновления списка оборудования
@@ -226,6 +347,9 @@ namespace ISCS_Application
             {
                 LoadGuestEquipment();
             }
+
+            // После загрузки применяем текущие фильтры
+            ApplyFiltersAndSearch();
         }
 
         private void UpdateEquipmentList(List<Equipment> equipmentList)
@@ -246,7 +370,8 @@ namespace ISCS_Application
                     EquipmentPlace = $"Аудитория: {e.Place?.Name ?? "—"}",
                     EquipmentOffice = $"Подразделение: {e.Place?.Office?.ShortName ?? e.Place?.Office?.FullName ?? "—"}",
                     EquipmentPhoto = LoadImageSafe(e.PhotoPath),
-                    StatusVisibility = Visibility.Collapsed
+                    StatusVisibility = Visibility.Collapsed,
+                    Weight = e.Weight // Добавляем вес для сортировки
                 };
 
                 newCollection.Add(item);
@@ -318,6 +443,7 @@ namespace ISCS_Application
                 return LoadStub();
             }
         }
+
         private BitmapImage LoadStub()
         {
             try
@@ -341,7 +467,6 @@ namespace ISCS_Application
                 return new BitmapImage();
             }
         }
-
 
         // Метод для получения корневой директории проекта
         private string GetProjectRootDirectory()
@@ -368,21 +493,61 @@ namespace ISCS_Application
 
         private void AddItem_Click(object sender, RoutedEventArgs e)
         {
+            // Дополнительная проверка прав перед открытием
+            if (!CanUserAddEquipment())
+            {
+                MessageBox.Show("У вас нет прав для добавления оборудования",
+                    "Доступ запрещен", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
 
+            OpenDetailWindow(null);
+        }
+
+        /// <summary>
+        /// Проверяет, может ли пользователь добавлять оборудование
+        /// </summary>
+        private bool CanUserAddEquipment()
+        {
+            if (currentWorker == null) return false;
+
+            string positionName = currentWorker.Position.Name.ToLower();
+
+            return positionName.Contains("администратор") ||
+                   positionName.Contains("заведующий лабораторией") ||
+                   positionName.Contains("инженер") ||
+                   positionName.Contains("заведующий");
         }
 
         private void EquipmentListBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
             if (EquipmentListBox.SelectedItem is EquipmentListItem selectedItem)
             {
-                EquipmentListBox.IsEnabled = false;
-                _currentDetailWindow = new DetailWindow(selectedItem.EquipmentId, this);
-                _currentDetailWindow.Closed += DetailWindow_Closed;
-                _currentDetailWindow.ShowDialog();
+                if (CanUserAddEquipment())
+                {
+                    OpenDetailWindow(selectedItem.EquipmentId);
+                }
             }
         }
 
-       
+        private void OpenDetailWindow(int? equipmentId)
+        {
+            EquipmentListBox.IsEnabled = false;
+
+            // Передаем currentWorker в конструктор
+            var detailWindow = new DetailWindow(equipmentId, this, currentWorker);
+
+            // Подписываемся на закрытие
+            detailWindow.Closed += (s, e) =>
+            {
+                EquipmentListBox.IsEnabled = true;
+                EquipmentListBox.SelectedItem = null;
+                UpdateEquipmentList(); // Обновляем список после закрытия
+            };
+
+            detailWindow.ShowDialog();
+        }
+
         private void DetailWindow_Closed(object? sender, EventArgs e)
         {
             EquipmentListBox.IsEnabled = true;
@@ -394,6 +559,7 @@ namespace ISCS_Application
                 _currentDetailWindow = null;
             }
         }
+
         public void RefreshEquipmentPhoto(int equipmentId)
         {
             var item = _equipmentItems.FirstOrDefault(x => x.EquipmentId == equipmentId);
@@ -414,8 +580,12 @@ namespace ISCS_Application
             // Принудительно обновляем отображение
             EquipmentListBox.Items.Refresh();
         }
-
-
-
     }
+}
+
+// Вспомогательный класс для элементов фильтра по подразделениям
+public class DepartmentFilterItem
+{
+    public int Id { get; set; }
+    public string Name { get; set; } = "";
 }
